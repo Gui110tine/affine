@@ -90,7 +90,7 @@ void parse_result(int flag) {
     }
 
     fclose(fp);
-    std::cout << ", " << total*512.0/1024.0 << ", " << total*512.0*1024.0/((FLAGS_key_size + FLAGS_value_size)*SEQ_WRITES);
+    std::cout << ", " << total << ", " << total*512.0/((FLAGS_key_size + FLAGS_value_size)*SEQ_WRITES);
     //system("mount /dev/sdb4 /mnt/db/leveldb");
 
 }

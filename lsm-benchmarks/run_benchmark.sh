@@ -16,7 +16,7 @@ fi
 touch "$log"
 echo "Write Amp test" | tee -a "$log"
 echo ",,LevelDB-Sequential-Insert,,,LevelDB-Random-Insert,,,RocksDB-Sequential-Insert,,,RocksDB-Random-Insert" | tee -a "$log"
-echo "NodeSize, insertions, MiB_written, MiB_written_to_disk, written_to_disk_over_written, MiB_written_to_disk, written_to_disk_over_written" | tee -a "$log"
+echo "NodeSize, insertions, MiB_written, blocks_written_to_disk, written_to_disk_over_written, blocks_written_to_disk, written_to_disk_over_written" | tee -a "$log"
 
 for i in 268435456 134217728 67108864 33554432 16777216 8388608 4194304 2097152 1048576 524288; do
     if [ -d "$DB" ]; then
