@@ -5,8 +5,11 @@
 #include <random>
 #include <string>
 #include <unistd.h>
+#include <stdlib.h>
+#include <stdio.h>
 
 #include "leveldb/db.h"
+#include "leveldb/cache.h"
 #include "rocksdb/db.h"
 #include "rocksdb/options.h"
 #include "rocksdb/table.h"
@@ -15,13 +18,15 @@ using random_bytes_engine = std::independent_bits_engine<
 	std::default_random_engine, CHAR_BIT, unsigned char>;
 static const char *db_name = "/mnt/db/leveldb";
 size_t SEQ_WRITES = 100000000;
-size_t  num_queries = 10000000;
+size_t num_queries = 10000000;
+size_t cache_size = 2*4194304;
 int FLAGS_key_size = 128;
 int FLAGS_value_size = 512;
+int FLAGS_info = 0;
 
 
 void print_line_header(int table_size) {
-	std::cout << table_size << ", " << SEQ_WRITES << ", " << SEQ_WRITES*(FLAGS_key_size + FLAGS_value_size)/1024.0/1024.0;
+	std::cout << cache_size << ", " << table_size << ", " << SEQ_WRITES << ", " << SEQ_WRITES*(FLAGS_key_size + FLAGS_value_size)/1024.0/1024.0;
 }
 
 void print_result(double time_elapsed) {
@@ -95,15 +100,29 @@ void parse_result(int flag) {
 
 }
 
-std::string create_key(int key_num, char letter) {
-	char key[100];
-	snprintf(key, sizeof(key), "%016d%c", key_num, letter);
+std::string create_key(int key_num, char letter, char flag) {
+	char key[200];
+        int i = 0;
+        static char x = 'a' + rand()%26;
+
+        if (flag == 'r') {
+            for (i = 0; i < 100; i++) {
+                key[i] = 'a' + rand()%26;
+            }
+            key[i] = '\0';
+        }
+
+        snprintf(key + i, sizeof(key) - i, "%c%016d%c", (flag == 's') ? x : 'a' + key_num/(SEQ_WRITES/26), key_num, letter);
+
+        i += 18;
 	std::string cpp_key = key;
-	cpp_key.insert(cpp_key.begin(), FLAGS_key_size - 17, ' ');
+	cpp_key.insert(cpp_key.begin(), FLAGS_key_size - i, ' ');
 	return cpp_key;  
 }
 
+
 int run_leveldb(int table_size) {
+
 	/***************************SETUP********************************/
 	/* Setup and open database */
 	leveldb::DB* db;
@@ -111,6 +130,7 @@ int run_leveldb(int table_size) {
 	options.create_if_missing = true;
 	options.error_if_exists = true;
 	options.max_file_size = table_size;
+        options.block_cache = leveldb::NewLRUCache(cache_size); 
 	options.write_buffer_size = table_size;
 	options.compression = leveldb::CompressionType::kNoCompression;
 	//options.block_size = table_size;
@@ -122,11 +142,10 @@ int run_leveldb(int table_size) {
 	random_bytes_engine rbe;
 	std::vector<unsigned char> data(FLAGS_value_size);
 
-
         /* Setup DB with SEQ_WRITES * (FLAGS_value_size + FLAGS_data_size) amount of data */
-        for (size_t i = 0; i < SEQ_WRITES; i++) {
+/*        for (size_t i = 0; i < SEQ_WRITES; i++) {
                 std::generate(begin(data), end(data), std::ref(rbe));
-                std::string key = create_key(i, 'a');
+                std::string key = create_key(i, 'a', 'i');
                 std::string value (data.begin(), data.end());
                 leveldb::Status s = db->Put(leveldb::WriteOptions(), key, value);
                 if (!s.ok()) {
@@ -137,24 +156,40 @@ int run_leveldb(int table_size) {
         }
 
         sync();
-
+*/
         /****************PREP BUFFERS WITH RANDOM INSERTS*****************/
         srand(12321);
         std::string value;
         for (size_t i = 0; i < num_queries; i++) {
-                std::string key = create_key(rand() % SEQ_WRITES, 'b');
+                std::generate(begin(data), end(data), std::ref(rbe));
+                std::string key = create_key(i, 'b', 'r');
+                std::string value (data.begin(), data.end());
                 leveldb::Status s = db->Put(leveldb::WriteOptions(), key, value);
                 assert(s.ok());
         }
         sync();
 
+        std::string info;
+        bool p;
+
+        if (FLAGS_info) {
+            p = db->GetProperty("leveldb.stats", &info);
+            std::cout << std::endl << "Info pre-test:" << std::endl << info << std::endl;
+            p = db->GetProperty("leveldb.approximate-memory-usage", &info);
+            std::cout << std::endl << info << std::endl;
+            // p = db->GetProperty("leveldb.sstables", &info);
+            // std::cout << std::endl << info << std::endl;
+        }
+
+
 
         system("blktrace -a write -d /dev/sdb4 -o leveldb.seq.tracefile &");
+
 
 	/****************TEST SEQUENTIAL INSERTS*************************/
 	for (size_t i = 0; i < SEQ_WRITES; i++) {
 		std::generate(begin(data), end(data), std::ref(rbe));
-		std::string key = create_key(i, 'a');
+		std::string key = create_key(i, 'c', 's');
 		std::string value (data.begin(), data.end());
 		leveldb::Status s = db->Put(leveldb::WriteOptions(), key, value);
 		if (!s.ok()) {
@@ -167,14 +202,57 @@ int run_leveldb(int table_size) {
         sync();
         parse_result(0);
 
+        if (FLAGS_info) {
+            p = db->GetProperty("leveldb.stats", &info);
+            std::cout << std::endl << "Info post-test:" << std::endl << info << std::endl; 
+            p = db->GetProperty("leveldb.approximate-memory-usage", &info);
+            std::cout << std::endl << info << std::endl;
+            // p = db->GetProperty("leveldb.sstables", &value);
+            // std::cout << std::endl << info << std::endl;
+        }
+
+        delete db;
+        system("rm -rf /mnt/db/leveldb/*");
+
+
+
+        leveldb::DB* db0;
+        status = leveldb::DB::Open(options, db_name, &db0);
+        if (!status.ok()) std::cerr << status.ToString() << std::endl;
+        assert(status.ok());
+
+        /* Setup DB with SEQ_WRITES * (FLAGS_value_size + FLAGS_data_size) amount of data */ 
+/*        for (size_t i = 0; i < SEQ_WRITES; i++) {
+            std::generate(begin(data), end(data), std::ref(rbe));
+            std::string key = create_key(i, 'a', 'i');
+            std::string value (data.begin(), data.end());
+            leveldb::Status s = db0->Put(leveldb::WriteOptions(), key, value);
+            if (!s.ok()) {
+                std::cout << "Assertion failed" << std::endl;
+                std::cerr << s.ToString() << std::endl;
+                return 1;
+            }
+        }
+*/
         /*****************PREP BUFFERS WITH RANDOM INSERTES**************/
         srand(12321);
-        for (size_t i = 0; i < num_queries; i++) {
-            std::string key = create_key(rand() % SEQ_WRITES, 'b');
-            leveldb::Status s = db->Put(leveldb::WriteOptions(), key, value);
+        for (size_t i = 0; i < SEQ_WRITES; i++) {
+            std::generate(begin(data), end(data), std::ref(rbe));
+            std::string key = create_key(i, 'b', 'r');
+            std::string value (data.begin(), data.end());
+            leveldb::Status s = db0->Put(leveldb::WriteOptions(), key, value);
             assert(s.ok());
         }
         sync();
+
+        if (FLAGS_info) {
+            p = db0->GetProperty("leveldb.stats", &info);
+            std::cout << std::endl << "Info post-test:" << std::endl << info << std::endl;
+            p = db0->GetProperty("leveldb.approximate-memory-usage", &info);
+            std::cout << std::endl << info << std::endl;
+            // p = db0->GetProperty("leveldb.sstables", &value);
+            // std::cout << std::endl << info << std::endl;
+        }
 
 
 	/*****************TEST RANDOM INSERTS****************************/
@@ -182,18 +260,28 @@ int run_leveldb(int table_size) {
         srand(32123); 
         system("blktrace -a write -d /dev/sdb4 -o leveldb.rand.tracefile &");
 
-	for(size_t i = 0; i < num_queries; i++) {
-		std::string key = create_key(rand() % SEQ_WRITES, 'b');
-		leveldb::Status s = db->Put(leveldb::WriteOptions(), key, value);
+        for (size_t i = 0; i < SEQ_WRITES; i++) {
+                std::generate(begin(data), end(data), std::ref(rbe));
+		std::string key = create_key(i, 'c', 'r');
+                std::string value (data.begin(), data.end());
+		leveldb::Status s = db0->Put(leveldb::WriteOptions(), key, value);
 		assert(s.ok());
 	}
         
         sync();
         parse_result(1);
 
+        if (FLAGS_info) {
+            p = db0->GetProperty("leveldb.stats", &info);
+            std::cout << std::endl << "Info post-rand-test:" << std::endl << info << std::endl;
+            p = db0->GetProperty("leveldb.approximate-memory-usage", &info);
+            std::cout << std::endl << info << std::endl;
+            // p = db0->GetProperty("leveldb.sstables", &value);
+            // std::cout << std::endl << info << std::endl;
+        }
 
 	/****************************CLEANUP*****************************/
-	delete db;
+	delete db0;
 	return 0;
 
 }
@@ -225,9 +313,9 @@ int run_rocksdb(int table_size) {
 	std::vector<unsigned char> data(FLAGS_value_size);
 
         /* Setup DB with SEQ_WRITES * (FLACS_value_size + FLAGS_key_size) abmount of data */
-        for (size_t i = 0; i < SEQ_WRITES; i++) {
+/*        for (size_t i = 0; i < SEQ_WRITES; i++) {
                 std::generate(begin(data), end(data), std::ref(rbe));
-                std::string key = create_key(i, 'a');
+                std::string key = create_key(i, 'a', 'i');
                 std::string value (data.begin(), data.end());
                 rocksdb::Status s = db->Put(rocksdb::WriteOptions(), key, value);
                 if (!s.ok()) {
@@ -237,12 +325,14 @@ int run_rocksdb(int table_size) {
                 }
         }
         sync();
-
+*/
         /****************PREP BUFFERS WITH RANDOM INSERTS****************/
         srand(12321);
         std::string value;
         for (size_t i = 0; i < num_queries; i++) {
-                std::string key = create_key(rand() % SEQ_WRITES, 'b');
+                std::generate(begin(data), end(data), std::ref(rbe)); 
+                std::string key = create_key(i, 'b', 'r');
+                std::string value (data.begin(), data.end());
                 rocksdb::Status s = db->Put(rocksdb::WriteOptions(), key, value);
                 if (!s.ok()) std::cout << s.ToString() << std::endl;
                 assert(s.ok());
@@ -255,7 +345,7 @@ int run_rocksdb(int table_size) {
 	/***************TEST SEQUENTIAL WRITES**********************/
 	for (size_t i = 0; i < SEQ_WRITES; i++) {
 		std::generate(begin(data), end(data), std::ref(rbe));
-		std::string key = create_key(i, 'a');
+		std::string key = create_key(i, 'c', 's');
 		std::string value (data.begin(), data.end());
 		rocksdb::Status s = db->Put(rocksdb::WriteOptions(), key, value);
 		if (!s.ok()) {
@@ -268,13 +358,36 @@ int run_rocksdb(int table_size) {
         sync();
         parse_result(2);
 
+        delete db;
+        system("rm -rf /mnt/db/leveldb/*");
+
+        rocksdb::DB* db0;
+        status = rocksdb::DB::Open(options, db_name, &db0);
+        if (!status.ok()) std::cerr << status.ToString() << std::endl;
+        assert(status.ok());
+/*
+        for (size_t i = 0; i < SEQ_WRITES; i++) {
+            std::generate(begin(data), end(data), std::ref(rbe));
+            std::string key = create_key(i, 'a', 'i');
+            std::string value (data.begin(), data.end());
+            rocksdb::Status s = db0->Put(rocksdb::WriteOptions(), key, value);
+            if (!s.ok()) {
+                std::cout << "Assertion failed" << std::endl;
+                std::cout << s.ToString() << std::endl;
+                return 1;
+            }
+        }
+        sync();
+*/
 
         /*****************PREP BUFFERS WITH RANDOM INSERTS***************/
 
         srand(12321);
         for (size_t i = 0; i < num_queries; i++) {
-            std::string key = create_key(rand() % SEQ_WRITES, 'b');
-            rocksdb::Status s = db->Put(rocksdb::WriteOptions(), key, value);
+            std::generate(begin(data), end(data), std::ref(rbe));
+            std::string key = create_key(i, 'b', 'r');
+            std::string value (data.begin(), data.end());
+            rocksdb::Status s = db0->Put(rocksdb::WriteOptions(), key, value);
             if (!s.ok()) std::cout << s.ToString() << std::endl;
             assert(s.ok());
         }
@@ -287,8 +400,10 @@ int run_rocksdb(int table_size) {
         system("blktrace -a write -d /dev/sdb4 -o rocksdb.rand.tracefile &");
         
 	for(size_t i = 0; i < num_queries; i++) {
-		std::string key = create_key(rand() % SEQ_WRITES, 'b');
-		rocksdb::Status s = db->Put(rocksdb::WriteOptions(), key, value);
+                std::generate(begin(data), end(data), std::ref(rbe));
+		std::string key = create_key(i, 'c', 'r');
+                std::string value (data.begin(), data.end());
+		rocksdb::Status s = db0->Put(rocksdb::WriteOptions(), key, value);
 		if (!s.ok()) std::cout << s.ToString() << std::endl;
 		assert(s.ok());
 	}
@@ -298,7 +413,7 @@ int run_rocksdb(int table_size) {
 
 
 	/****************************CLEANUP*****************************/
-	delete db;
+	delete db0;
 	return 0;
 
 }
@@ -306,11 +421,11 @@ int run_rocksdb(int table_size) {
 int main(int argc, char** argv) {
 	int leveldb = 0;
 	int rocksdb = 0;
-	int table_size = 0;
+        size_t table_size = 0;
 	int begin_line = 0;
 	int c;
 
-	while ((c = getopt (argc, argv, "lrbs:k:v:")) != -1 ) {
+	while ((c = getopt (argc, argv, "lrbis:c:k:v:")) != -1 ) {
 		switch (c) {
 		    case 'l':
 			leveldb = 1;
@@ -324,6 +439,12 @@ int main(int argc, char** argv) {
 		    case 'b':
 			begin_line = 1;
 			break;
+                    case 'i':
+                        FLAGS_info = 1;
+                        break;
+                   case 'c':
+                        cache_size = std::stoi(optarg);
+                        break;
 		    case 'k':
 			FLAGS_key_size = std::stoi(optarg);
 			break;
