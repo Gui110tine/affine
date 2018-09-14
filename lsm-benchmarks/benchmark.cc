@@ -184,7 +184,7 @@ int run_leveldb(int table_size) {
 
 
 
-        system("blktrace -a write -d /dev/sdb4 -o leveldb.seq.tracefile &");
+        system("blktrace -a write -d /dev/sdb1 -o leveldb.seq.tracefile &");
 
 
 	/****************TEST SEQUENTIAL INSERTS*************************/
@@ -259,7 +259,7 @@ int run_leveldb(int table_size) {
 	/*****************TEST RANDOM INSERTS****************************/
 
         srand(32123); 
-        system("blktrace -a write -d /dev/sdb4 -o leveldb.rand.tracefile &");
+        system("blktrace -a write -d /dev/sdb1 -o leveldb.rand.tracefile &");
 
         for (size_t i = 0; i < SEQ_WRITES; i++) {
                 std::generate(begin(data), end(data), std::ref(rbe));
@@ -342,7 +342,7 @@ int run_rocksdb(int table_size) {
         sync();
 
 
-        system("blktrace -a write -d /dev/sdb4 -o rocksdb.seq.tracefile &");
+        system("blktrace -a write -d /dev/sdb1 -o rocksdb.seq.tracefile &");
 
 	/***************TEST SEQUENTIAL WRITES**********************/
 	for (size_t i = 0; i < SEQ_WRITES; i++) {
@@ -399,7 +399,7 @@ int run_rocksdb(int table_size) {
 	/*****************TEST RANDOM INSERTS****************************/
         
         srand(32123);
-        system("blktrace -a write -d /dev/sdb4 -o rocksdb.rand.tracefile &");
+        system("blktrace -a write -d /dev/sdb1 -o rocksdb.rand.tracefile &");
         
 	for(size_t i = 0; i < num_queries; i++) {
                 std::generate(begin(data), end(data), std::ref(rbe));

@@ -4,7 +4,7 @@ set -x
 
 DB="/mnt/db/leveldb"
 exe=benchmark
-log="output`date +%Y-%m-%d.%H:%M:%S`.csv"
+log="rocksdb_write_amp`date +%Y-%m-%d.%H:%M:%S`.csv"
 keysize=1024
 valuesize=$((keysize*4))
 
@@ -15,7 +15,7 @@ fi
 
 touch "$log"
 echo "Write Amp test" | tee -a "$log"
-echo "N_over_M, fanout, node_size, insertions, MiB_written, blocks_written_to_disk, written_to_disk_over_written, blocks_written_to_disk, written_to_disk_over_written" | tee -a "$log"
+echo "N_over_M, fanout, node_size, seq_write_amp, rand_write_amp" | tee -a "$log"
 
 for j in 4 8 16; do
     for i in 268435456 134217728 67108864 33554432 16777216 8388608 4194304 2097152 1048576 524288; do
