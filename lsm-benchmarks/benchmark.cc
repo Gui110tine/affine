@@ -26,7 +26,7 @@ int FLAGS_info = 0;
 
 
 void print_line_header(int table_size) {
-	std::cout << fanout << ", " << table_size << ", " << SEQ_WRITES << ", " << SEQ_WRITES*(FLAGS_key_size + FLAGS_value_size)/1024.0/1024.0;
+	std::cout << 16/4 << ", " << fanout << ", " << table_size;
 }
 
 void print_result(double time_elapsed) {
@@ -95,7 +95,7 @@ void parse_result(int flag) {
     }
 
     fclose(fp);
-    std::cout << ", " << total << ", " << total*512.0/((FLAGS_key_size + FLAGS_value_size)*SEQ_WRITES);
+    std::cout << ", " << total*512.0/((FLAGS_key_size + FLAGS_value_size)*SEQ_WRITES);
     //system("mount /dev/sdb4 /mnt/db/leveldb");
 
 }
@@ -347,7 +347,7 @@ int run_rocksdb(int table_size) {
 	/***************TEST SEQUENTIAL WRITES**********************/
 	for (size_t i = 0; i < SEQ_WRITES; i++) {
 		std::generate(begin(data), end(data), std::ref(rbe));
-		std::string key = create_key(i, 'c', 's');
+		std::string key = create_key(i, 'c', (i%10) ? 's' : 'r');
 		std::string value (data.begin(), data.end());
 		rocksdb::Status s = db->Put(rocksdb::WriteOptions(), key, value);
 		if (!s.ok()) {
