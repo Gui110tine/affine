@@ -14,9 +14,9 @@ if [ ! -f "$exe" ]; then
 fi
 
 touch "$log"
-echo "Block Size test" | tee -a "$log"
+echo "Write Amp test" | tee -a "$log"
 echo ",,LevelDB-Sequential-Insert,,,LevelDB-Random-Insert,,,RocksDB-Sequential-Insert,,,RocksDB-Random-Insert" | tee -a "$log"
-echo "NodeSize, insertions, blocks_written, insertions, blocks_written, insertions, blocks_written, insetions, blocks_written" | tee -a "$log"
+echo "NodeSize, insertions, blocks_written, write_amp, blocks_written, write_amp, blocks_written, write_amp, blocks_written, write_amp" | tee -a "$log"
 
 #for i in 268435456 134217728 67108864 33554432 16777216 8388608 4194304 2097152 1048576 524288; do
 for i in 268435456; do

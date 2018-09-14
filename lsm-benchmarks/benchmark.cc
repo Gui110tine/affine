@@ -19,14 +19,14 @@ using random_bytes_engine = std::independent_bits_engine<
 static const char *db_name = "/mnt/db/leveldb";
 size_t SEQ_WRITES = 100000000;
 size_t num_queries = 10000000;
-size_t cache_size = 2*4194304;
+size_t fanout = 2;
 int FLAGS_key_size = 128;
 int FLAGS_value_size = 512;
 int FLAGS_info = 0;
 
 
 void print_line_header(int table_size) {
-	std::cout << cache_size << ", " << table_size << ", " << SEQ_WRITES << ", " << SEQ_WRITES*(FLAGS_key_size + FLAGS_value_size)/1024.0/1024.0;
+	std::cout << fanout << ", " << table_size << ", " << SEQ_WRITES << ", " << SEQ_WRITES*(FLAGS_key_size + FLAGS_value_size)/1024.0/1024.0;
 }
 
 void print_result(double time_elapsed) {
@@ -125,12 +125,13 @@ int run_leveldb(int table_size) {
 
 	/***************************SETUP********************************/
 	/* Setup and open database */
+        fanout = 10;
 	leveldb::DB* db;
 	leveldb::Options options;
 	options.create_if_missing = true;
 	options.error_if_exists = true;
 	options.max_file_size = table_size;
-        options.block_cache = leveldb::NewLRUCache(cache_size); 
+        //options.block_cache = leveldb::NewLRUCache(cache_size); 
 	options.write_buffer_size = table_size;
 	options.compression = leveldb::CompressionType::kNoCompression;
 	//options.block_size = table_size;
@@ -301,6 +302,7 @@ int run_rocksdb(int table_size) {
 	options.write_buffer_size = table_size;
 	options.db_write_buffer_size = table_size;
 	options.max_open_files = 1000;
+        options.max_bytes_for_level_multiplier = fanout; 
 	options.compression = rocksdb::CompressionType::kNoCompression;
 	rocksdb::Status status = rocksdb::DB::Open(options, db_name, &db);
 	if (!status.ok()) {
@@ -425,7 +427,7 @@ int main(int argc, char** argv) {
 	int begin_line = 0;
 	int c;
 
-	while ((c = getopt (argc, argv, "lrbis:c:k:v:")) != -1 ) {
+	while ((c = getopt (argc, argv, "lrbis:f:k:v:")) != -1 ) {
 		switch (c) {
 		    case 'l':
 			leveldb = 1;
@@ -442,9 +444,8 @@ int main(int argc, char** argv) {
                     case 'i':
                         FLAGS_info = 1;
                         break;
-                   case 'c':
-                        cache_size = std::stoi(optarg);
-                        break;
+                    case 'f':
+                        fanout = std::stoi(optarg);
 		    case 'k':
 			FLAGS_key_size = std::stoi(optarg);
 			break;
