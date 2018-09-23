@@ -12,6 +12,7 @@
 #include "leveldb/cache.h"
 #include "rocksdb/db.h"
 #include "rocksdb/options.h"
+#include "rocksdb/advanced_options.h"
 #include "rocksdb/table.h"
 
 using random_bytes_engine = std::independent_bits_engine<
@@ -343,7 +344,7 @@ int run_rocksdb(int table_size) {
         sync();
 
 
-        system("blktrace -a write -d /dev/sdb1 -o rocksdb.seq.tracefile &");
+        system("blktrace -a write -d /dev/sdc1 -o rocksdb.seq.tracefile &");
 
 	/***************TEST SEQUENTIAL WRITES**********************/
 	for (size_t i = 0; i < SEQ_WRITES; i++) {
@@ -400,7 +401,7 @@ int run_rocksdb(int table_size) {
 	/*****************TEST RANDOM INSERTS****************************/
         
         srand(32123);
-        system("blktrace -a write -d /dev/sdb1 -o rocksdb.rand.tracefile &");
+        system("blktrace -a write -d /dev/sdc1 -o rocksdb.rand.tracefile &");
         
 	for(size_t i = 0; i < num_queries; i++) {
                 std::generate(begin(data), end(data), std::ref(rbe));
