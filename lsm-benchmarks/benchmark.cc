@@ -87,7 +87,8 @@ void parse_result(int flag) {
             break;
     }
     // FILE * fp = fopen("parsefile.txt", "r");
-    int temp, ret, total = 0;
+    int temp, ret;
+    size_t total = 0;
 
     ret = fscanf(fp, "%d", &temp);
     while (ret && temp) {
