@@ -23,10 +23,10 @@ for j in 4 8 16; do
 	    	    rm -rf "$DB"/*
 	    fi
 
-	    echo -n "mem1, $j, $i" | tee -a "$log"
+	    echo -n "mem4, $j, $i" | tee -a "$log"
 	    #./$exe -l -b -s $i -k $keysize -v $valuesize | tee -a "$log"
 	    # rm -rf "$DB"/*
-	    cgexec -g memory:mem1 ./$exe -r -f $j -s $i -k $keysize -v $valuesize | tee -a "$log"
+	    cgexec -g memory:mem4 ./$exe -r -f $j -s $i -k $keysize -v $valuesize | tee -a "$log"
 	    echo | tee -a "$log"
     done
 done
