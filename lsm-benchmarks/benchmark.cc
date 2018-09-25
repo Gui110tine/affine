@@ -306,6 +306,7 @@ int run_rocksdb(int table_size) {
 	//options.write_buffer_size = table_size;
 	//options.db_write_buffer_size = table_size;
 	options.max_open_files = 1000;
+	options.target_file_size_base = 4 * 1024 * 1024;
 	options.max_bytes_for_level_base = fanout * options.target_file_size_base * options.level0_file_num_compaction_trigger;
         options.max_bytes_for_level_multiplier = fanout; 
 	options.compression = rocksdb::CompressionType::kNoCompression;
