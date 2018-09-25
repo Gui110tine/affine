@@ -12,22 +12,24 @@
 #include "leveldb/cache.h"
 #include "rocksdb/db.h"
 #include "rocksdb/options.h"
+#include "rocksdb/advanced_options.h"
 #include "rocksdb/table.h"
+
+
 
 using random_bytes_engine = std::independent_bits_engine<
 	std::default_random_engine, CHAR_BIT, unsigned char>;
 static const char *db_name = "/mnt/db/leveldb";
-static const char *dev = "/dev/sdc1";
 size_t SEQ_WRITES = 100000000;
 size_t num_queries = 10000000;
 size_t fanout = 2;
 int FLAGS_key_size = 128;
 int FLAGS_value_size = 512;
-int FLAGS_info = 0;
+int FLAGS_info = 1;
 
 
 void print_line_header(int table_size) {
-	std::cout << 16/4 << ", " << fanout << ", " << table_size;
+	std::cout << fanout;
 }
 
 void print_result(double time_elapsed) {
@@ -41,7 +43,7 @@ void parse_result(int flag) {
 
     char buff[100];
     //system("umount -l /dev/sdb4");
-    system("kill $(pidof -s blktrace)");
+    system("kill -15 $(pidof -s blktrace)");
     switch (flag) {
         case 0 :
             sprintf(buff, "blkparse -a issue -f \"%%n\\\\n\" -i leveldb.seq.tracefile -o leveldb.seq.txt");
@@ -185,9 +187,9 @@ int run_leveldb(int table_size) {
         }
 
 
-	char buff[100];
-        sprintf(buff, "blktrace -a write -d %s -o leveldb.seq.tracefile &", dev);
-	system(buff);
+
+        system("blktrace -a write -d /dev/sdb1 -o leveldb.seq.tracefile &");
+
 
 	/****************TEST SEQUENTIAL INSERTS*************************/
 	for (size_t i = 0; i < SEQ_WRITES; i++) {
@@ -261,8 +263,7 @@ int run_leveldb(int table_size) {
 	/*****************TEST RANDOM INSERTS****************************/
 
         srand(32123); 
-        sprintf(buff, "blktrace -a write -d %s -o leveldb.rand.tracefile &", dev);
-	system(buff);
+        system("blktrace -a write -d /dev/sdb1 -o leveldb.rand.tracefile &");
 
         for (size_t i = 0; i < SEQ_WRITES; i++) {
                 std::generate(begin(data), end(data), std::ref(rbe));
@@ -301,24 +302,35 @@ int run_rocksdb(int table_size) {
 	//table_options.metadata_block_size = table_size;
 	//table_options.block_size = table_size;
 	//options.table_factory.reset(rocksdb::NewBlockBasedTableFactory(table_options));
-	options.target_file_size_base = table_size;
-	options.write_buffer_size = table_size;
-	options.db_write_buffer_size = table_size;
+	//options.target_file_size_base = table_size;
+	//options.write_buffer_size = table_size;
+	//options.db_write_buffer_size = table_size;
 	options.max_open_files = 1000;
+	options.max_bytes_for_level_base = fanout * options.target_file_size_base * options.level0_file_num_compaction_trigger;
         options.max_bytes_for_level_multiplier = fanout; 
 	options.compression = rocksdb::CompressionType::kNoCompression;
-	rocksdb::Status status = rocksdb::DB::Open(options, db_name, &db);
+	
+	rocksdb::Status status;
+
+#ifdef RUN_SEQ
+	status = rocksdb::DB::Open(options, db_name, &db);
 	if (!status.ok()) {
 		std::cerr << status.ToString() << std::endl;
 	}
 	assert(status.ok());
 
+#endif
+
 	/* Create random number generator and initialize variables */
 	random_bytes_engine rbe;
 	std::vector<unsigned char> data(FLAGS_value_size);
+	std::string info;
+	bool p;
+
+#ifdef RUN_SEQ
 
         /* Setup DB with SEQ_WRITES * (FLACS_value_size + FLAGS_key_size) abmount of data */
-/*        for (size_t i = 0; i < SEQ_WRITES; i++) {
+        for (size_t i = 0; i < SEQ_WRITES; i++) {
                 std::generate(begin(data), end(data), std::ref(rbe));
                 std::string key = create_key(i, 'a', 'i');
                 std::string value (data.begin(), data.end());
@@ -330,7 +342,7 @@ int run_rocksdb(int table_size) {
                 }
         }
         sync();
-*/
+
         /****************PREP BUFFERS WITH RANDOM INSERTS****************/
         srand(12321);
         std::string value;
@@ -344,9 +356,14 @@ int run_rocksdb(int table_size) {
         }
         sync();
 
-	char buff[100];
-        sprintf(buff, "blktrace -a write -d %s -o rocksdb.seq.tracefile &", dev);
-	system(buff);
+
+        if (FLAGS_info) {
+            p = db->GetProperty("rocksdb.stats", &info);
+            std::cout << std::endl << "Info pre-test:" << std::endl << info << std::endl;
+        }
+
+
+        system("blktrace -a write -d /dev/sdc1 -o rocksdb.seq.tracefile &");
 
 	/***************TEST SEQUENTIAL WRITES**********************/
 	for (size_t i = 0; i < SEQ_WRITES; i++) {
@@ -362,10 +379,19 @@ int run_rocksdb(int table_size) {
 	}
 
         sync();
+
+	std::cout << ", " << options.target_file_size_base;
         parse_result(2);
+
+        if (FLAGS_info) {
+            p = db->GetProperty("rocksdb.stats", &info);
+            std::cout << std::endl << "Info post-test:" << std::endl << info << std::endl;
+        }
 
         delete db;
         system("rm -rf /mnt/db/leveldb/*");
+
+#endif
 
         rocksdb::DB* db0;
         status = rocksdb::DB::Open(options, db_name, &db0);
@@ -400,11 +426,15 @@ int run_rocksdb(int table_size) {
 
         sync();
 
+        if (FLAGS_info) {
+            p = db0->GetProperty("rocksdb.stats", &info);
+            std::cout << std::endl << "Info pre-test:" << std::endl << info << std::endl;
+        }
+
 	/*****************TEST RANDOM INSERTS****************************/
         
         srand(32123);
-        sprintf(buff, "blktrace -a write -d %s -o rocksdb.rand.tracefile &", dev);
-	system(buff);
+        system("blktrace -a write -d /dev/sdc1 -o rocksdb.rand.tracefile &");
         
 	for(size_t i = 0; i < num_queries; i++) {
                 std::generate(begin(data), end(data), std::ref(rbe));
@@ -417,6 +447,11 @@ int run_rocksdb(int table_size) {
 
         sync(); 
         parse_result(3);
+
+        if (FLAGS_info) {
+            p = db0->GetProperty("rocksdb.stats", &info);
+            std::cout << std::endl << "Info post-test:" << std::endl << info << std::endl;
+        }
 
 
 	/****************************CLEANUP*****************************/
