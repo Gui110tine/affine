@@ -15,7 +15,7 @@
 #include "rocksdb/advanced_options.h"
 #include "rocksdb/table.h"
 
-
+#define RUN_SEQ 1
 
 using random_bytes_engine = std::independent_bits_engine<
 	std::default_random_engine, CHAR_BIT, unsigned char>;
@@ -306,7 +306,7 @@ int run_rocksdb(int table_size) {
 	//options.write_buffer_size = table_size;
 	//options.db_write_buffer_size = table_size;
 	options.max_open_files = 1000;
-	options.target_file_size_base = 4 * 1024 * 1024;
+	options.target_file_size_base = 16 * 1024 * 1024;
 	options.max_bytes_for_level_base = fanout * options.target_file_size_base * options.level0_file_num_compaction_trigger;
         options.max_bytes_for_level_multiplier = fanout; 
 	options.compression = rocksdb::CompressionType::kNoCompression;
@@ -331,7 +331,7 @@ int run_rocksdb(int table_size) {
 #ifdef RUN_SEQ
 
         /* Setup DB with SEQ_WRITES * (FLACS_value_size + FLAGS_key_size) abmount of data */
-        for (size_t i = 0; i < SEQ_WRITES; i++) {
+/*        for (size_t i = 0; i < SEQ_WRITES; i++) {
                 std::generate(begin(data), end(data), std::ref(rbe));
                 std::string key = create_key(i, 'a', 'i');
                 std::string value (data.begin(), data.end());
@@ -342,8 +342,10 @@ int run_rocksdb(int table_size) {
                         return 1;
                 }
         }
-        sync();
 
+	sleep(1200);
+        sync();
+*/
         /****************PREP BUFFERS WITH RANDOM INSERTS****************/
         srand(12321);
         std::string value;
@@ -355,6 +357,8 @@ int run_rocksdb(int table_size) {
                 if (!s.ok()) std::cout << s.ToString() << std::endl;
                 assert(s.ok());
         }
+
+	sleep(1200);
         sync();
 
 
@@ -379,6 +383,7 @@ int run_rocksdb(int table_size) {
 		}
 	}
 
+	sleep(1800);
         sync();
 
 	std::cout << ", " << options.target_file_size_base;
@@ -393,6 +398,8 @@ int run_rocksdb(int table_size) {
         system("rm -rf /mnt/db/leveldb/*");
 
 #endif
+
+#ifdef RUN_RAND
 
         rocksdb::DB* db0;
         status = rocksdb::DB::Open(options, db_name, &db0);
@@ -427,10 +434,13 @@ int run_rocksdb(int table_size) {
 
         sync();
 
+	sleep(1200);
+
         if (FLAGS_info) {
             p = db0->GetProperty("rocksdb.stats", &info);
             std::cout << std::endl << "Info pre-test:" << std::endl << info << std::endl;
         }
+
 
 	/*****************TEST RANDOM INSERTS****************************/
         
@@ -446,7 +456,8 @@ int run_rocksdb(int table_size) {
 		assert(s.ok());
 	}
 
-        sync(); 
+	sleep(1800);
+        sync();
         parse_result(3);
 
         if (FLAGS_info) {
@@ -457,6 +468,8 @@ int run_rocksdb(int table_size) {
 
 	/****************************CLEANUP*****************************/
 	delete db0;
+#endif
+
 	return 0;
 
 }
